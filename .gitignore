@@ -2,5 +2,5 @@
 /.gradle/
 /.idea/gradle.xml
 /pairs.tsv
-/src/main/kotlin/experiments/Test.kt
 /.idea/uiDesigner.xml
+/src/main/kotlin/experiments/
