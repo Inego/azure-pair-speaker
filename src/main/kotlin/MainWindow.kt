@@ -31,6 +31,7 @@ class MainFrame(title: String) : JFrame(title) {
     }
 
     private var currentIdx = 0
+    private var currentVoice = 0
     private lateinit var pairs: List<TranslationPair>
 
     init {
@@ -85,7 +86,6 @@ class TranslationPair(
 )
 
 
-
 @DelicateCoroutinesApi
 fun main() = runBlocking {
 
@@ -112,9 +112,16 @@ private fun readPairsAsync(): List<TranslationPair> {
     val properties = Properties()
     properties.load(propertiesInputStream)
 
-    val azureRegion = properties.getProperty("azure.region")
-    val azureKey = properties.getProperty("azure.key")
+    fun getAndCheckProp(name: String): String {
+        val result = properties.getProperty(name)
+        check(!result.isNullOrEmpty()) {
+            "Property not specified: $name"
+        }
+        return result
+    }
 
+    val azureRegion = getAndCheckProp("azure.region")
+    val azureKey = getAndCheckProp("azure.key")
 
     val pairsTsvStream = FileInputStream("pairs.tsv")
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
