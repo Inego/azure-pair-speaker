@@ -82,6 +82,9 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
     }
 
     private fun saveProperties() {
+        if (!this::properties.isInitialized) {
+            return
+        }
         properties.setProperty(PROP_CURRENT, currentIdx.toString())
         FileOutputStream(propertiesFileName).use { output ->
             properties.store(output, null)
