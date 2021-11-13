@@ -1,26 +1,31 @@
 import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
 import org.apache.commons.csv.CSVFormat
-import java.awt.Dimension
-import java.awt.Font
-import java.awt.Insets
-import java.awt.Toolkit
+import java.awt.*
+import java.awt.event.KeyEvent
+import java.awt.event.KeyListener
 import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.util.*
+import javax.sound.sampled.Clip
 import javax.swing.*
 import javax.swing.border.EmptyBorder
 
 
-const val KEY_REPEAT = "repeat"
 
 
-class MainFrame(title: String) : JFrame(title) {
+
+class MainFrame(title: String) : JFrame(title), KeyListener {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Swing)
 
     companion object {
         val mainFont = Font(Font.SERIF, Font.PLAIN, 30)
         val translationFont = Font(Font.SANS_SERIF, Font.ITALIC, 22)
+        const val PROP_CURRENT = "current"
     }
+
+    private lateinit var properties: Properties
 
     private val sentenceLabel = JLabel("Yükleniyor...").apply {
         font = mainFont
@@ -34,8 +39,12 @@ class MainFrame(title: String) : JFrame(title) {
     private var currentVoice = 0
     private lateinit var pairs: List<TranslationPair>
 
+    private var currentClip: Clip? = null
+
     init {
         defaultCloseOperation = EXIT_ON_CLOSE
+
+        focusTraversalKeysEnabled = false // To catch VK_TAB
 
         val panel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -53,33 +62,72 @@ class MainFrame(title: String) : JFrame(title) {
 
         panel.add(translationLabel)
 
-        panel.keyStrokeAction(' ', KEY_REPEAT) {
-            sentenceLabel.text += "!"
-        }
+        addKeyListener(this)
 
         pack()
         setLocationRelativeTo(null)
         isVisible = true
     }
 
-    suspend fun setLoadedPairs(loadedPairs: List<TranslationPair>) {
-        pairs = loadedPairs
+    suspend fun setup(startupData: StartupData) {
+        pairs = startupData.pairs
+        currentIdx = startupData.currentIdx
+        this.properties = startupData.properties
+
         refreshCurrentPair()
     }
 
     private suspend fun refreshCurrentPair() {
+
         val currentPair = pairs[currentIdx]
         val sentenceText = currentPair.sentence
         sentenceLabel.text = sentenceText
         translationLabel.text = currentPair.translation
 
-        val clip = SoundCache.get(PairReading(currentIdx, currentVoice), sentenceText)
-        clip.loop(10)
+        currentClip?.stop()
+        currentClip?.framePosition = 0
+        currentClip = SoundCache.get(PairReading(currentIdx, currentVoice), sentenceText)
+        currentClip?.start()
     }
 
     fun displayException(e: Exception) {
         sentenceLabel.text = "ERROR"
         translationLabel.text = e.message
+    }
+
+    override fun keyTyped(e: KeyEvent?) {
+        // Do nothing
+    }
+
+    override fun keyPressed(e: KeyEvent?) {
+        // Do nothing
+    }
+
+    override fun keyReleased(e: KeyEvent) {
+        when (e.keyCode) {
+            10 -> { // Enter
+                currentIdx++
+                scope.launch { refreshCurrentPair() }
+            }
+            8 -> { // Backspace
+                if (currentIdx > 0) {
+                    currentIdx--
+                    scope.launch { refreshCurrentPair() }
+                }
+            }
+            9 -> { // Tab
+                currentVoice = 1 - currentVoice
+                scope.launch { refreshCurrentPair() }
+            }
+            32 -> { // Space
+                currentClip?.stop()
+                currentClip?.framePosition = 0
+                currentClip?.start()
+            }
+            else -> {
+                println("Key released: $e")
+            }
+        }
     }
 }
 
@@ -102,14 +150,23 @@ fun main() = runBlocking {
     }
 
     try {
-        mainFrame.setLoadedPairs(dataDeferred.await())
+        val startupInfo = dataDeferred.await()
+        launch(Dispatchers.Swing) {
+            mainFrame.setup(startupInfo)
+        }.join()
     } catch (e: Exception) {
         mainFrame.displayException(e)
     }
 }
 
+class StartupData(
+    val pairs: List<TranslationPair>,
+    val currentIdx: Int,
+    val properties: Properties
+)
 
-private fun readPairsAsync(): List<TranslationPair> {
+
+private fun readPairsAsync(): StartupData {
 
     // First, read properties
     val propertiesInputStream = FileInputStream("app.properties")
@@ -126,13 +183,17 @@ private fun readPairsAsync(): List<TranslationPair> {
 
     val azureRegion = getAndCheckProp("azure.region")
     val azureKey = getAndCheckProp("azure.key")
+    val current = getAndCheckProp(MainFrame.PROP_CURRENT)
+    val currentIdx = current.toInt()
 
     SoundCache.setup(azureRegion, azureKey)
 
     val pairsTsvStream = FileInputStream("pairs.tsv")
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
     val parsed = CSVFormat.TDF.parse(reader)
-    return parsed.asSequence()
+    val pairs = parsed.asSequence()
         .map { TranslationPair(it[0], it[1]) }
         .toList()
+
+    return StartupData(pairs, currentIdx, properties)
 }
