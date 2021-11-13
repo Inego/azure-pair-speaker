@@ -145,9 +145,16 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
                 }
             }
             32 -> { // Space to Repeat
-                currentClip?.stop()
-                currentClip?.framePosition = 0
-                currentClip?.start()
+                currentClip?.let { clip ->
+                    clip.stop()
+                    scope.launch {
+                        while (clip.isRunning) {
+                            delay(50)
+                        }
+                        clip.framePosition = 0
+                        clip.start()
+                    }
+                }
             }
             67 -> { // C to Copy
                 val stringSelection = StringSelection(sentenceLabel.text)
