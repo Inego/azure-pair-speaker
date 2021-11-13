@@ -2,6 +2,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
 import org.apache.commons.csv.CSVFormat
 import java.awt.*
+import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
 import java.awt.event.WindowAdapter
@@ -124,24 +125,30 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
     override fun keyReleased(e: KeyEvent) {
         when (e.keyCode) {
-            10 -> { // Enter
+            10 -> { // Enter to Go to next
                 currentIdx++
                 scope.launch { refreshCurrentPair() }
             }
-            8 -> { // Backspace
+            8 -> { // Backspace to Go back
                 if (currentIdx > 0) {
                     currentIdx--
                     scope.launch { refreshCurrentPair() }
                 }
             }
-            9 -> { // Tab
-                currentVoice = 1 - currentVoice
-                scope.launch { refreshCurrentPair() }
+            9 -> { // Tab to Switch voice
+                if (!e.isAltDown) {
+                    currentVoice = 1 - currentVoice
+                    scope.launch { refreshCurrentPair() }
+                }
             }
-            32 -> { // Space
+            32 -> { // Space to Repeat
                 currentClip?.stop()
                 currentClip?.framePosition = 0
                 currentClip?.start()
+            }
+            67 -> { // C to Copy
+                val stringSelection = StringSelection(sentenceLabel.text)
+                Toolkit.getDefaultToolkit().systemClipboard.setContents(stringSelection, null)
             }
             else -> {
                 println("Key released: $e")
@@ -149,6 +156,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         }
     }
 }
+
 
 
 class TranslationPair(
