@@ -4,18 +4,23 @@ import org.apache.commons.csv.CSVFormat
 import java.awt.*
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStreamReader
+import java.time.Instant
 import java.util.*
 import javax.sound.sampled.Clip
 import javax.swing.*
 import javax.swing.border.EmptyBorder
 
 
-
-
+const val propertiesFileName = "app.properties"
 
 class MainFrame(title: String) : JFrame(title), KeyListener {
+
+    private lateinit var lastSave: Instant
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Swing)
 
@@ -64,15 +69,29 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
         addKeyListener(this)
 
+        addWindowListener(object : WindowAdapter() {
+            override fun windowClosing(e: WindowEvent?) {
+                saveProperties()
+            }
+        })
+
         pack()
         setLocationRelativeTo(null)
         isVisible = true
+    }
+
+    private fun saveProperties() {
+        properties.setProperty(PROP_CURRENT, currentIdx.toString())
+        FileOutputStream(propertiesFileName).use { output ->
+            properties.store(output, null)
+        }
     }
 
     suspend fun setup(startupData: StartupData) {
         pairs = startupData.pairs
         currentIdx = startupData.currentIdx
         this.properties = startupData.properties
+        lastSave = Instant.now()
 
         refreshCurrentPair()
     }
@@ -169,7 +188,7 @@ class StartupData(
 private fun readPairsAsync(): StartupData {
 
     // First, read properties
-    val propertiesInputStream = FileInputStream("app.properties")
+    val propertiesInputStream = FileInputStream(propertiesFileName)
     val properties = Properties()
     properties.load(propertiesInputStream)
 
@@ -190,10 +209,11 @@ private fun readPairsAsync(): StartupData {
 
     val pairsTsvStream = FileInputStream("pairs.tsv")
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
-    val parsed = CSVFormat.TDF.parse(reader)
-    val pairs = parsed.asSequence()
-        .map { TranslationPair(it[0], it[1]) }
-        .toList()
+    val pairs = CSVFormat.TDF.parse(reader).use { parsed ->
+        parsed.asSequence()
+            .map { TranslationPair(it[0], it[1]) }
+            .toList()
+    }
 
     return StartupData(pairs, currentIdx, properties)
 }
