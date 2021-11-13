@@ -62,15 +62,19 @@ class MainFrame(title: String) : JFrame(title) {
         isVisible = true
     }
 
-    fun setLoadedPairs(loadedPairs: List<TranslationPair>) {
+    suspend fun setLoadedPairs(loadedPairs: List<TranslationPair>) {
         pairs = loadedPairs
         refreshCurrentPair()
     }
 
-    private fun refreshCurrentPair() {
+    private suspend fun refreshCurrentPair() {
         val currentPair = pairs[currentIdx]
-        sentenceLabel.text = currentPair.sentence
+        val sentenceText = currentPair.sentence
+        sentenceLabel.text = sentenceText
         translationLabel.text = currentPair.translation
+
+        val clip = SoundCache.get(PairReading(currentIdx, currentVoice), sentenceText)
+        clip.loop(10)
     }
 
     fun displayException(e: Exception) {
@@ -122,6 +126,8 @@ private fun readPairsAsync(): List<TranslationPair> {
 
     val azureRegion = getAndCheckProp("azure.region")
     val azureKey = getAndCheckProp("azure.key")
+
+    SoundCache.setup(azureRegion, azureKey)
 
     val pairsTsvStream = FileInputStream("pairs.tsv")
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)

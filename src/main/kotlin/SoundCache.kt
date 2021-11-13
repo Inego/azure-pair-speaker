@@ -1,11 +1,9 @@
 import com.github.benmanes.caffeine.cache.AsyncCache
 import com.github.benmanes.caffeine.cache.Caffeine
-import com.microsoft.cognitiveservices.speech.ResultReason
-import com.microsoft.cognitiveservices.speech.SpeechConfig
-import com.microsoft.cognitiveservices.speech.SpeechSynthesisResult
-import com.microsoft.cognitiveservices.speech.SpeechSynthesizer
+import com.microsoft.cognitiveservices.speech.*
 import kotlinx.coroutines.future.await
 import java.io.ByteArrayInputStream
+import java.lang.IllegalStateException
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.Clip
 
@@ -46,20 +44,27 @@ object SoundCache {
                 else -> throw IllegalArgumentException("Unknown voice code: ${pairReading.voice}")
             }
 
-            val result: SpeechSynthesisResult = synth.SpeakText(text)
+             synth.SpeakText(text).use { result ->
+                 if (result.reason != ResultReason.SynthesizingAudioCompleted) {
 
-            if (result.reason != ResultReason.SynthesizingAudioCompleted) {
-                TODO("Handle error")
-            }
+                     var reason = result.reason.toString()
 
-            val audioData = result.audioData
-            val byteArrayInputStream = ByteArrayInputStream(audioData)
-            val audioInputStream = AudioSystem.getAudioInputStream(byteArrayInputStream)
+                     if (result.reason == ResultReason.Canceled) {
+                        reason = SpeechSynthesisCancellationDetails.fromResult(result).toString()
+                     }
 
-            val clip = AudioSystem.getClip()
-            clip.open(audioInputStream)
+                     throw IllegalStateException("Audio problem: $reason")
+                 }
 
-            clip
+                 val audioData = result.audioData
+                 val byteArrayInputStream = ByteArrayInputStream(audioData)
+                 val audioInputStream = AudioSystem.getAudioInputStream(byteArrayInputStream)
+
+                 val clip = AudioSystem.getClip()
+                 clip.open(audioInputStream)
+
+                 clip
+             }
         }
             .await()
 }
