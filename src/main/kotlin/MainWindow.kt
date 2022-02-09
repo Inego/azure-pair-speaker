@@ -26,12 +26,17 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Swing)
 
     companion object {
+        val smallFont = Font(Font.SANS_SERIF, Font.ITALIC, 12)
         val mainFont = Font(Font.SERIF, Font.PLAIN, 30)
         val translationFont = Font(Font.SANS_SERIF, Font.ITALIC, 22)
         const val PROP_CURRENT = "current"
     }
 
     private lateinit var properties: Properties
+
+    private val numberLabel = JLabel("[...]").apply {
+        font = smallFont
+    }
 
     private val sentenceLabel = JLabel("Yükleniyor...").apply {
         font = mainFont
@@ -43,7 +48,11 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
     private var currentIdx = 0
     private var currentVoice = 0
+
+    private var shown = false
+
     private lateinit var pairs: List<TranslationPair>
+
 
     private var currentClip: Clip? = null
 
@@ -62,9 +71,13 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         val labelWidth = Toolkit.getDefaultToolkit().screenSize.width * 95 / 100
         sentenceLabel.preferredSize = Dimension(labelWidth, 40)
 
-        panel.add(sentenceLabel)
+        panel.add(numberLabel)
 
         panel.add(Box.createVerticalStrut(10)) // Spacer
+
+        panel.add(sentenceLabel)
+
+        panel.add(Box.createVerticalStrut(10))
 
         panel.add(translationLabel)
 
@@ -104,8 +117,25 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
         val currentPair = pairs[currentIdx]
         val sentenceText = currentPair.sentence
-        sentenceLabel.text = sentenceText
-        translationLabel.text = currentPair.translation
+
+        numberLabel.text = "[$currentIdx]"
+
+        if (shown) {
+            sentenceLabel.text = sentenceText
+            translationLabel.text = currentPair.translation
+
+        } else {
+            sentenceLabel.text = "..."
+            translationLabel.text = ""
+
+            playCurrentClip()
+        }
+    }
+
+    private suspend fun playCurrentClip() {
+
+        val currentPair = pairs[currentIdx]
+        val sentenceText = currentPair.sentence
 
         currentClip?.stop()
         currentClip?.framePosition = 0
@@ -129,19 +159,27 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
     override fun keyReleased(e: KeyEvent) {
         when (e.keyCode) {
             10 -> { // Enter to Go to next
-                currentIdx++
-                scope.launch { refreshCurrentPair() }
+                shown = if (shown) {
+                    currentIdx++
+                    false
+                } else {
+                    true
+                }
+                scope.launch {
+                    refreshCurrentPair()
+                }
             }
             8 -> { // Backspace to Go back
                 if (currentIdx > 0) {
                     currentIdx--
+                    shown = false
                     scope.launch { refreshCurrentPair() }
                 }
             }
             9 -> { // Tab to Switch voice
                 if (!e.isAltDown) {
                     currentVoice = 1 - currentVoice
-                    scope.launch { refreshCurrentPair() }
+                    scope.launch { playCurrentClip() }
                 }
             }
             32 -> { // Space to Repeat
@@ -166,7 +204,6 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         }
     }
 }
-
 
 
 class TranslationPair(

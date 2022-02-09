@@ -25,7 +25,9 @@ object SoundCache {
         check(!this::synth0.isInitialized) { "Cannot setup speech more than once" }
 
         SpeechConfig.fromSubscription(speechSubscriptionKey, serviceRegion).use { config ->
+
             config.speechSynthesisLanguage = "tr-TR"
+            config.setSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Riff48Khz16BitMonoPcm)
 
             config.speechSynthesisVoiceName = "tr-TR-AhmetNeural"
             synth0 = SpeechSynthesizer(config, null)
