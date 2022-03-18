@@ -159,15 +159,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
     override fun keyReleased(e: KeyEvent) {
         when (e.keyCode) {
             10 -> { // Enter to Go to next
-                shown = if (shown) {
-                    currentIdx++
-                    false
-                } else {
-                    true
-                }
-                scope.launch {
-                    refreshCurrentPair()
-                }
+                next()
             }
             8 -> { // Backspace to Go back
                 if (currentIdx > 0) {
@@ -198,9 +190,27 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
                 val stringSelection = StringSelection(sentenceLabel.text)
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(stringSelection, null)
             }
+            78 -> { // N: next + switch (like Enter + Tab)
+                next(true)
+            }
             else -> {
                 println("Key released: $e")
             }
+        }
+    }
+
+    private fun next(switch: Boolean = false) {
+        shown = if (shown) {
+            currentIdx++
+            if (switch) {
+                currentVoice = 1 - currentVoice
+            }
+            false
+        } else {
+            true
+        }
+        scope.launch {
+            refreshCurrentPair()
         }
     }
 }
