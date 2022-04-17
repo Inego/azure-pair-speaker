@@ -1,7 +1,10 @@
 import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
 import org.apache.commons.csv.CSVFormat
-import java.awt.*
+import java.awt.Dimension
+import java.awt.Font
+import java.awt.Insets
+import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
@@ -11,6 +14,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.time.Instant
+import java.time.LocalDateTime
 import java.util.*
 import javax.sound.sampled.Clip
 import javax.swing.*
@@ -192,6 +196,11 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
             }
             78 -> { // N: next + switch (like Enter + Tab)
                 next(true)
+            }
+            83 -> { // S to save settings (current position)
+                val now = LocalDateTime.now()
+                saveProperties()
+                numberLabel.text = "[$currentIdx] - Saved at $now"
             }
             else -> {
                 println("Key released: $e")
