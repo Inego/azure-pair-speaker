@@ -23,6 +23,10 @@ import javax.swing.border.EmptyBorder
 
 const val propertiesFileName = "app.properties"
 
+enum class Mode {
+    LISTEN, SPEAK
+}
+
 class MainFrame(title: String) : JFrame(title), KeyListener {
 
     private lateinit var lastSave: Instant
@@ -34,6 +38,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         val mainFont = Font(Font.SERIF, Font.PLAIN, 30)
         val translationFont = Font(Font.SANS_SERIF, Font.ITALIC, 22)
         const val PROP_CURRENT = "current"
+        const val PROP_MODE = "mode"
     }
 
     private lateinit var properties: Properties
@@ -52,6 +57,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
     private var currentIdx = 0
     private var currentVoice = 0
+    private var mode = Mode.LISTEN
 
     private var shown = false
 
@@ -103,6 +109,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
             return
         }
         properties.setProperty(PROP_CURRENT, currentIdx.toString())
+        properties.setProperty(PROP_MODE, mode.name)
         FileOutputStream(propertiesFileName).use { output ->
             properties.store(output, null)
         }
@@ -112,6 +119,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         pairs = startupData.pairs
         currentIdx = startupData.currentIdx
         this.properties = startupData.properties
+        mode = Mode.valueOf(properties.getProperty(PROP_MODE, Mode.LISTEN.name))
         lastSave = Instant.now()
 
         refreshCurrentPair()
@@ -121,18 +129,30 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
         val currentPair = pairs[currentIdx]
         val sentenceText = currentPair.sentence
+        val translationText = currentPair.translation
 
-        numberLabel.text = "[$currentIdx]"
+        numberLabel.text = "[$currentIdx] - Mode: $mode"
 
-        if (shown) {
-            sentenceLabel.text = sentenceText
-            translationLabel.text = currentPair.translation
-
-        } else {
-            sentenceLabel.text = "..."
-            translationLabel.text = ""
-
-            playCurrentClip()
+        when (mode) {
+            Mode.LISTEN -> {
+                if (shown) {
+                    sentenceLabel.text = sentenceText
+                    translationLabel.text = translationText
+                } else {
+                    sentenceLabel.text = "..."
+                    translationLabel.text = ""
+                    playCurrentClip()
+                }
+            }
+            Mode.SPEAK -> {
+                if (shown) {
+                    sentenceLabel.text = sentenceText
+                    translationLabel.text = translationText
+                } else {
+                    sentenceLabel.text = ""
+                    translationLabel.text = translationText
+                }
+            }
         }
     }
 
@@ -162,45 +182,45 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
     override fun keyReleased(e: KeyEvent) {
         when (e.keyCode) {
-            10 -> { // Enter to Go to next
-                next()
-            }
-            8 -> { // Backspace to Go back
+            KeyEvent.VK_ENTER -> next()
+            KeyEvent.VK_BACK_SPACE -> {
                 if (currentIdx > 0) {
                     currentIdx--
                     shown = false
                     scope.launch { refreshCurrentPair() }
                 }
             }
-            9 -> { // Tab to Switch voice
+            KeyEvent.VK_TAB -> {
                 if (!e.isAltDown) {
                     currentVoice = 1 - currentVoice
-                    scope.launch { playCurrentClip() }
-                }
-            }
-            32 -> { // Space to Repeat
-                currentClip?.let { clip ->
-                    clip.stop()
-                    scope.launch {
-                        while (clip.isRunning) {
-                            delay(50)
-                        }
-                        clip.framePosition = 0
-                        clip.start()
+                    if (mode == Mode.LISTEN && !shown) {
+                        scope.launch { playCurrentClip() }
                     }
                 }
             }
-            67 -> { // C to Copy
-                val stringSelection = StringSelection(sentenceLabel.text)
+            KeyEvent.VK_SPACE -> {
+                scope.launch { playCurrentClip() }
+            }
+            KeyEvent.VK_C -> {
+                val textToCopy = if (mode == Mode.SPEAK && !shown) translationLabel.text else sentenceLabel.text
+                val stringSelection = StringSelection(textToCopy)
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(stringSelection, null)
             }
-            78 -> { // N: next + switch (like Enter + Tab)
-                next(true)
-            }
-            83 -> { // S to save settings (current position)
+            KeyEvent.VK_N -> next(true)
+            KeyEvent.VK_S -> {
                 val now = LocalDateTime.now()
                 saveProperties()
                 numberLabel.text = "[$currentIdx] - Saved at $now"
+            }
+            KeyEvent.VK_F1 -> {
+                mode = Mode.LISTEN
+                shown = false
+                scope.launch { refreshCurrentPair() }
+            }
+            KeyEvent.VK_F2 -> {
+                mode = Mode.SPEAK
+                shown = false
+                scope.launch { refreshCurrentPair() }
             }
             else -> {
                 println("Key released: $e")
@@ -283,11 +303,15 @@ private fun readPairsAsync(): StartupData {
 
     val pairsTsvStream = FileInputStream("pairs.tsv")
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
-    val pairs = CSVFormat.TDF.parse(reader).use { parsed ->
-        parsed.asSequence()
-            .map { TranslationPair(it[0], it[1]) }
-            .toList()
-    }
+    val pairs = CSVFormat.TDF.builder()
+        .setQuote(null)
+        .build()
+        .parse(reader)
+        .use { parsed ->
+            parsed.asSequence()
+                .map { TranslationPair(it[0], it[1]) }
+                .toList()
+        }
 
     return StartupData(pairs, currentIdx, properties)
 }
