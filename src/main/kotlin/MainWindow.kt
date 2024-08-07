@@ -202,7 +202,12 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
                 scope.launch { playCurrentClip() }
             }
             KeyEvent.VK_C -> {
-                val textToCopy = if (mode == Mode.SPEAK && !shown) translationLabel.text else sentenceLabel.text
+                val currentPair = pairs[currentIdx]
+                val textToCopy = if (e.isShiftDown)
+                    currentPair.translation
+                else
+                    currentPair.sentence
+
                 val stringSelection = StringSelection(textToCopy)
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(stringSelection, null)
             }
