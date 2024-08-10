@@ -1,6 +1,6 @@
 /build/
 /.gradle/
 /.idea/gradle.xml
-/pairs.tsv
+/pairs_*.tsv
 /.idea/uiDesigner.xml
 /src/main/kotlin/experiments/

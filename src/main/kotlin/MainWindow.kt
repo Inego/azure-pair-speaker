@@ -21,13 +21,20 @@ import javax.swing.*
 import javax.swing.border.EmptyBorder
 
 
-const val propertiesFileName = "app.properties"
-
 enum class Mode {
     LISTEN, SPEAK
 }
 
-class MainFrame(title: String) : JFrame(title), KeyListener {
+const val PROP_CURRENT = "current"
+const val PROP_PAIRS_FILE = "pairs_file"
+const val PROP_MODE = "mode"
+const val PROP_VOICES = "voices"
+
+private fun getVoicesFromProperties(props: Properties) =
+    props.getProperty(PROP_VOICES)?.split(",")?.map { it.trim() } ?: emptyList()
+
+
+class MainFrame(title: String, val propertiesPath: String) : JFrame(title), KeyListener {
 
     private lateinit var lastSave: Instant
 
@@ -37,8 +44,6 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         val smallFont = Font(Font.SANS_SERIF, Font.ITALIC, 12)
         val mainFont = Font(Font.SERIF, Font.PLAIN, 30)
         val translationFont = Font(Font.SANS_SERIF, Font.ITALIC, 22)
-        const val PROP_CURRENT = "current"
-        const val PROP_MODE = "mode"
     }
 
     private lateinit var properties: Properties
@@ -56,12 +61,13 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
     }
 
     private var currentIdx = 0
-    private var currentVoice = 0
+    private var currentVoiceIdx = 0
     private var mode = Mode.LISTEN
 
     private var shown = false
 
     private lateinit var pairs: List<TranslationPair>
+    private lateinit var voices: List<String>
 
 
     private var currentClip: Clip? = null
@@ -110,7 +116,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         }
         properties.setProperty(PROP_CURRENT, currentIdx.toString())
         properties.setProperty(PROP_MODE, mode.name)
-        FileOutputStream(propertiesFileName).use { output ->
+        FileOutputStream(propertiesPath).use { output ->
             properties.store(output, null)
         }
     }
@@ -120,10 +126,13 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         currentIdx = startupData.currentIdx
         this.properties = startupData.properties
         mode = Mode.valueOf(properties.getProperty(PROP_MODE, Mode.LISTEN.name))
+        voices = getVoicesFromProperties(properties)
+        require(voices.isNotEmpty()) { "At least one voice must be specified in the 'voices' property" }
         lastSave = Instant.now()
 
         refreshCurrentPair()
     }
+
 
     private suspend fun refreshCurrentPair() {
 
@@ -131,7 +140,7 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         val sentenceText = currentPair.sentence
         val translationText = currentPair.translation
 
-        numberLabel.text = "[$currentIdx] - Mode: $mode"
+        numberLabel.text = "[$currentIdx] - Mode: $mode - Voice: ${voices[currentVoiceIdx]}"
 
         when (mode) {
             Mode.LISTEN -> {
@@ -163,13 +172,16 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
 
         currentClip?.stop()
         currentClip?.framePosition = 0
-        currentClip = SoundCache.get(PairReading(currentIdx, currentVoice), sentenceText)
+        currentClip = SoundCache.get(PairReading(currentIdx, voices[currentVoiceIdx]), sentenceText)
         currentClip?.start()
     }
 
     fun displayException(e: Exception) {
         sentenceLabel.text = "ERROR"
         translationLabel.text = e.message
+
+        // Print the full stack trace to the console
+        e.printStackTrace()
     }
 
     override fun keyTyped(e: KeyEvent?) {
@@ -192,10 +204,8 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
             }
             KeyEvent.VK_TAB -> {
                 if (!e.isAltDown) {
-                    currentVoice = 1 - currentVoice
-                    if (mode == Mode.LISTEN && !shown) {
-                        scope.launch { playCurrentClip() }
-                    }
+                    currentVoiceIdx = (currentVoiceIdx + 1) % voices.size
+                    scope.launch { playCurrentClip() }
                 }
             }
             KeyEvent.VK_SPACE -> {
@@ -237,7 +247,10 @@ class MainFrame(title: String) : JFrame(title), KeyListener {
         shown = if (shown) {
             currentIdx++
             if (switch) {
-                currentVoice = 1 - currentVoice
+                currentVoiceIdx++
+                if (currentVoiceIdx == voices.size) {
+                    currentVoiceIdx = 0
+                }
             }
             false
         } else {
@@ -257,14 +270,20 @@ class TranslationPair(
 
 
 @DelicateCoroutinesApi
-fun main() = runBlocking {
+fun main(args: Array<String>) = runBlocking {
+    if (args.isEmpty()) {
+        println("Error: Please provide a properties path as an argument.")
+        return@runBlocking
+    }
+
+    val propertiesPath = args[0]
 
     val dataDeferred = GlobalScope.async(Dispatchers.IO) {
-        readPairsAsync()
+        readPairsAsync(propertiesPath)
     }
 
     val mainFrame = withContext(Dispatchers.Swing) {
-        MainFrame("Azure Pair Speaker")
+        MainFrame("Azure Pair Speaker", propertiesPath)
     }
 
     try {
@@ -275,6 +294,12 @@ fun main() = runBlocking {
     } catch (e: Exception) {
         mainFrame.displayException(e)
     }
+
+    Runtime.getRuntime().addShutdownHook(Thread {
+        runBlocking {
+            SoundCache.cleanup()
+        }
+    })
 }
 
 class StartupData(
@@ -284,10 +309,10 @@ class StartupData(
 )
 
 
-private fun readPairsAsync(): StartupData {
+private fun readPairsAsync(propertiesPath: String): StartupData {
 
     // First, read properties
-    val propertiesInputStream = FileInputStream(propertiesFileName)
+    val propertiesInputStream = FileInputStream(propertiesPath)
     val properties = Properties()
     properties.load(propertiesInputStream)
 
@@ -301,12 +326,16 @@ private fun readPairsAsync(): StartupData {
 
     val azureRegion = getAndCheckProp("azure.region")
     val azureKey = getAndCheckProp("azure.key")
-    val current = getAndCheckProp(MainFrame.PROP_CURRENT)
+    val current = getAndCheckProp(PROP_CURRENT)
     val currentIdx = current.toInt()
+    val pairsPath = getAndCheckProp(PROP_PAIRS_FILE)
+    val voices = getVoicesFromProperties(properties)
 
-    SoundCache.setup(azureRegion, azureKey)
+    require(voices.isNotEmpty()) { "At least one voice must be specified in the 'voices' property" }
 
-    val pairsTsvStream = FileInputStream("pairs.tsv")
+    SoundCache.setup(azureRegion, azureKey, voices)
+
+    val pairsTsvStream = FileInputStream(pairsPath)
     val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
     val pairs = CSVFormat.TDF.builder()
         .setQuote(null)
