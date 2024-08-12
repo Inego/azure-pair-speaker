@@ -126,7 +126,7 @@ class MainFrame(title: String, val propertiesPath: String) : JFrame(title), KeyL
         currentIdx = startupData.currentIdx
         this.properties = startupData.properties
         mode = Mode.valueOf(properties.getProperty(PROP_MODE, Mode.LISTEN.name))
-        voices = getVoicesFromProperties(properties)
+        voices = getVoicesFromProperties(properties).shuffled()
         require(voices.isNotEmpty()) { "At least one voice must be specified in the 'voices' property" }
         lastSave = Instant.now()
 
