@@ -1,8 +1,5 @@
 import org.apache.commons.csv.CSVFormat
-import org.apache.commons.csv.CSVPrinter
-import java.io.File
 import java.io.FileInputStream
-import java.io.FileWriter
 import java.io.InputStreamReader
 
 /**
@@ -30,19 +27,6 @@ fun main() {
     // Shuffle the list of translation pairs
     val shuffledPairs = pairs.shuffled()
 
-    // Write the shuffled translation pairs to another TSV file
-    val outputFile = File("pairs.tsv")
-    val writer = FileWriter(outputFile)
-
-    val tsvPrinter = CSVPrinter(writer, CSVFormat.TDF.builder().setQuote(null).build())
-
-    shuffledPairs.forEach { pair ->
-        tsvPrinter.printRecord(pair.sentence, pair.translation)
-    }
-
-    tsvPrinter.flush()
-    tsvPrinter.close()
-
-    // Optionally print a success message
-    println("Shuffled translation pairs have been successfully saved to pairs.tsv")
+    savePairsToFile("pairs.tsv", shuffledPairs)
 }
+

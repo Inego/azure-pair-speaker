@@ -1,6 +1,5 @@
 import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
-import org.apache.commons.csv.CSVFormat
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Insets
@@ -12,7 +11,6 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStreamReader
 import java.time.Instant
 import java.time.LocalDateTime
 import java.util.*
@@ -263,12 +261,6 @@ class MainFrame(title: String, val propertiesPath: String) : JFrame(title), KeyL
 }
 
 
-class TranslationPair(
-    val sentence: String,
-    val translation: String
-)
-
-
 @DelicateCoroutinesApi
 fun main(args: Array<String>) = runBlocking {
     if (args.isEmpty()) {
@@ -335,17 +327,8 @@ private fun readPairsAsync(propertiesPath: String): StartupData {
 
     SoundCache.setup(azureRegion, azureKey, voices)
 
-    val pairsTsvStream = FileInputStream(pairsPath)
-    val reader = InputStreamReader(pairsTsvStream, Charsets.UTF_8)
-    val pairs = CSVFormat.TDF.builder()
-        .setQuote(null)
-        .build()
-        .parse(reader)
-        .use { parsed ->
-            parsed.asSequence()
-                .map { TranslationPair(it[0], it[1]) }
-                .toList()
-        }
+    val pairs = readPairs(pairsPath)
 
     return StartupData(pairs, currentIdx, properties)
 }
+
